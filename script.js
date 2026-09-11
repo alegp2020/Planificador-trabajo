@@ -25,14 +25,14 @@ $("#themeToggle").addEventListener("click", () => { document.body.classList.togg
 if (localStorage.getItem("dark") === "true") document.body.classList.add("dark");
 updateProfileUI();
 initializeProfile();
-console.log("Elementos del perfil cargados:", $("#profileForm"), $("#profileNameConfig"), $("#profileRoleConfig"));
+console.log("Elementos del perfil cargados:", $("#profileForm"), $("#profileNameInput"), $("#profileRoleInput"));
 if (localStorage.getItem("notifications") === "true" && "Notification" in window && Notification.permission === "granted") { setupDailyCheck(); setupVisibilityHandler(); }
 $$("[data-open]").forEach(b => b.addEventListener("click", () => openModal(b.dataset.open)));
 
-function openModal(type) { 
-  if (type === "perfil") { 
-    const nameInput = $("#profileNameConfig"); 
-    const roleInput = $("#profileRoleConfig"); 
+function openModal(type) {
+  if (type === "perfil") {
+    const nameInput = $("#profileNameInput"); 
+    const roleInput = $("#profileRoleInput"); 
     console.log("Abriendo modal perfil:", nameInput, roleInput); 
     if (nameInput) nameInput.value = userProfile.name; 
     if (roleInput) roleInput.value = userProfile.role; 
@@ -71,8 +71,8 @@ const profileForm = $("#profileForm");
 if (profileForm) {
   profileForm.addEventListener("submit", e => {
     e.preventDefault();
-    const nameInput = $("#profileNameConfig");
-    const roleInput = $("#profileRoleConfig");
+    const nameInput = $("#profileNameInput");
+    const roleInput = $("#profileRoleInput");
     const newName = nameInput ? nameInput.value.trim() : "";
     const newRole = roleInput ? roleInput.value : "enfermera";
     console.log("Guardando perfil:", newName, newRole);
@@ -92,11 +92,11 @@ if (profileForm) {
   console.error("profileForm no encontrado");
 }
 
-function removeEvent(id) { events = events.filter(e => e.id !== id); save(); renderAll(); }
+function removeEvent(id) { events = events.filter(e => e.id !== id); save(); renderAll(); showNotification("Evento eliminado", "El evento ha sido eliminado correctamente"); }
 function toggleDone(id) { events = events.map(e => e.id === id ? { ...e, done: !e.done } : e); save(); renderAll(); }
-function card(e) { return `<div class="list-card"><div class="list-main"><div class="list-symbol">${symbol(e.category)}</div><div><strong>${escapeHtml(e.title)}</strong><p>${fmtDate(e.date)} ${e.start ? "· " + e.start : ""}${e.end ? " – " + e.end : ""}</p>${e.notes ? `<p>${escapeHtml(e.notes)}</p>` : ""}</div></div><span class="tag">${typeName(e.category)}</span><button class="delete-btn" data-delete="${e.id}">×</button></div>` }
+function card(e) { const isTask=e.category==="study";const doneClass=isTask&&e.done?"done":"";return `<div class="list-card ${doneClass}"><div class="list-main"><div class="list-symbol">${symbol(e.category)}</div><div><strong>${escapeHtml(e.title)}</strong><p>${fmtDate(e.date)} ${e.start?"· "+e.start:""}${e.end?" – "+e.end:""}</p>${e.notes?`<p>${escapeHtml(e.notes)}</p>`:""}</div></div><span class="tag">${typeName(e.category)}</span>${isTask?`<button class="check-btn" data-done="${e.id}">${e.done?"✓":"○"}</button>`:""}<button class="delete-btn" data-delete="${e.id}">×</button></div>` }
 function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c])) }
-function renderLists() { let shifts = events.filter(e => e.category === "work").sort((a, b) => a.date.localeCompare(b.date)); let tasks = events.filter(e => e.category === "study").sort((a, b) => a.date.localeCompare(b.date)); let reminders = events.filter(e => e.category === "reminder").sort((a, b) => a.date.localeCompare(b.date)); $("#shiftList").innerHTML = shifts.length ? shifts.map(card).join() : '<div class="empty">Todavía no tienes turnos guardados ✿</div>'; $("#taskList").innerHTML = tasks.length ? tasks.map(card).join() : '<div class="empty">No tienes tareas pendientes ♡</div>'; $("#reminderList").innerHTML = reminders.length ? reminders.map(card).join() : '<div class="empty">No tienes recordatorios ✨</div>'; $$("[data-delete]").forEach(b => b.addEventListener("click", () => removeEvent(Number(b.dataset.delete)))); }
+function renderLists() { let shifts = events.filter(e => e.category === "work").sort((a, b) => a.date.localeCompare(b.date)); let tasks = events.filter(e => e.category === "study").sort((a, b) => a.date.localeCompare(b.date)); let reminders = events.filter(e => e.category === "reminder").sort((a, b) => a.date.localeCompare(b.date)); $("#shiftList").innerHTML = shifts.length ? shifts.map(card).join() : '<div class="empty">Todavía no tienes turnos guardados ✿</div>'; $("#taskList").innerHTML = tasks.length ? tasks.map(card).join() : '<div class="empty">No tienes tareas pendientes ♡</div>'; $("#reminderList").innerHTML = reminders.length ? reminders.map(card).join() : '<div class="empty">No tienes recordatorios ✨</div>'; $$("[data-delete]").forEach(b => b.addEventListener("click", () => removeEvent(Number(b.dataset.delete))));$$("[data-done]").forEach(b => b.addEventListener("click", () => toggleDone(Number(b.dataset.done)))); }
 function renderHome() { let upcoming = events.filter(e => e.date >= todayISO()).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5); $("#statShifts").textContent = events.filter(e => e.category === "work").length; $("#statTasks").textContent = events.filter(e => e.category === "study" && !e.done).length; $("#statReminders").textContent = events.filter(e => e.category === "reminder").length; $("#upcoming").innerHTML = upcoming.length ? upcoming.map(e => `<div class="event-card"><div class="event-date"><strong>${new Date(e.date + "T12:00:00").getDate()}</strong><span>${new Date(e.date + "T12:00:00").toLocaleDateString("es-ES", { month: "short" }).toUpperCase()}</span></div><div class="event-info"><strong>${escapeHtml(e.title)}</strong><p>${e.start || "Todo el día"}${e.end ? " – " + e.end : ""} · ${typeName(e.category)}</p></div><span class="tag">${typeName(e.category)}</span></div>`).join() : '<div class="empty">Tu agenda está libre. Añade tu primer evento ✿</div>'; }
 function renderCalendar() { let y = current.getFullYear(), m = current.getMonth(); $("#monthTitle").textContent = new Date(y, m, 1).toLocaleDateString("es-ES", { month: "long", year: "numeric" }).replace(/^./, c => c.toUpperCase()); $("#weekdays").innerHTML = ["L", "M", "X", "J", "V", "S", "D"].map(d => `<div>${d}</div>`).join(); let first = (new Date(y, m, 1).getDay() + 6) % 7; let days = new Date(y, m + 1, 0).getDate(); let prev = new Date(y, m, 0).getDate(); let html = ""; for (let i = 0; i < 42; i++) { let n = i - first + 1; let date, muted = false; if (n < 1) { date = `${y}-${String(m).padStart(2, "0")}-${String(prev + n).padStart(2, "0")}`; muted = true } else if (n > days) { date = new Date(y, m, n).toISOString().slice(0, 10); muted = true } else date = `${y}-${String(m + 1).padStart(2, "0")}-${String(n).padStart(2, "0")}`; let dayNum = n < 1 ? prev + n : n > days ? n - days : n; let ev = events.filter(e => e.date === date); html += `<div class="day ${muted ? "muted" : ""} ${date === todayISO() ? "today" : ""}"><div class="day-number">${dayNum}</div><div class="day-events">${ev.slice(0, 3).map(e => `<div class="day-event ${e.category}" title="${escapeHtml(e.title)}">${escapeHtml(e.title)}</div>`).join("")}</div></div>` } $("#calendarGrid").innerHTML = html; }
 $("#prevMonth").addEventListener("click", () => { current.setMonth(current.getMonth() - 1); renderCalendar() }); $("#nextMonth").addEventListener("click", () => { current.setMonth(current.getMonth() + 1); renderCalendar() }); $("#todayBtn").addEventListener("click", () => { current = new Date(); renderCalendar() });

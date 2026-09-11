@@ -29,22 +29,26 @@ function updateProfileUI() {
   const heart = document.createElement("span"); 
   heart.textContent = " ✿"; 
   $(".profile").appendChild(heart); 
-  $(".hero h1").innerHTML = `Hola, ${userProfile.name} <span>♡</span>`; 
 }
 
 function requestNotificationPermission() { 
-  if ("Notification" in window) { 
-    Notification.requestPermission().then(permission => { 
-      if (permission === "granted") { 
-        localStorage.setItem("notifications", "true"); 
-        localStorage.setItem("notificationPermission", "granted"); 
-        showNotification("¡Notificaciones activadas!", "Ahora recibirás avisos de tus recordatorios"); 
-        checkDailyReminders(); 
-      } else { 
-        localStorage.setItem("notificationPermission", "denied"); 
-      } 
-    }); 
+  if (!("Notification" in window)) return;
+  if (Notification.permission === "granted") { 
+    localStorage.setItem("notifications", "true"); 
+    setupDailyCheck(); 
+    return; 
   } 
+  if (Notification.permission === "denied") return;
+  Notification.requestPermission().then(permission => { 
+    if (permission === "granted") { 
+      localStorage.setItem("notifications", "true"); 
+      localStorage.setItem("notificationPermission", "granted"); 
+      showNotification("¡Notificaciones activadas!", "Ahora recibirás avisos de tus recordatorios"); 
+      setupDailyCheck(); 
+    } else { 
+      localStorage.setItem("notificationPermission", "denied"); 
+    } 
+  }); 
 }
 
 function showNotification(title, body) { 
@@ -54,24 +58,33 @@ function showNotification(title, body) {
   } 
 }
 
-function checkDailyReminders() { 
-  const today = todayISO(); 
-  const todayReminders = events.filter(e => e.category === "reminder" && e.date === today); 
-  if (todayReminders.length > 0) { 
-    todayReminders.forEach(r => { showNotification("Recordatorio", `${r.title}${r.start ? " a las " + r.start : ""}`); }); 
-    localStorage.setItem("lastReminderCheck", today); 
-  } 
+const getNotifiedSet = () => new Set(JSON.parse(localStorage.getItem("notifiedReminders") || "[]"));
+const markNotified = key => { const s = getNotifiedSet(); s.add(key); localStorage.setItem("notifiedReminders", JSON.stringify([...s])); };
+const nowHM = () => { const d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
+
+function checkDailyReminders() {
+  const today = todayISO();
+  const notified = getNotifiedSet();
+  const currentHM = nowHM();
+  events.filter(e => e.category === "reminder" && e.date === today).forEach(r => {
+    const key = `${r.id}:${today}`;
+    if (notified.has(key)) return;
+    if (r.start) {
+      // Notify once the scheduled time has arrived (checked periodically, so allow the current minute onward).
+      if (currentHM >= r.start) { showNotification("Recordatorio", `${r.title} · ${r.start}`); markNotified(key); }
+    } else {
+      // No specific time: notify once the first time we check it today.
+      showNotification("Recordatorio", r.title); markNotified(key);
+    }
+  });
 }
 
-function setupDailyCheck() { 
-  if ("Notification" in window && Notification.permission === "granted") { 
-    setInterval(() => { 
-      const lastCheck = localStorage.getItem("lastReminderCheck"); 
-      const today = todayISO(); 
-      if (lastCheck !== today) { checkDailyReminders(); } 
-    }, 60000); 
-    checkDailyReminders(); 
-  } 
+let dailyCheckInterval = null;
+function setupDailyCheck() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  checkDailyReminders();
+  if (dailyCheckInterval) return; // avoid stacking multiple intervals
+  dailyCheckInterval = setInterval(checkDailyReminders, 30000);
 }
 
 $$("[data-view]").forEach(b => b.addEventListener("click", () => { showView(b.dataset.view); if (window.innerWidth <= 768) { $(".sidebar").classList.remove("open"); } }));
@@ -83,7 +96,8 @@ if (localStorage.getItem("dark") === "true") document.body.classList.add("dark")
 updateProfileUI();
 initializeProfile();
 
-if (localStorage.getItem("notifications") === "true" && "Notification" in window && Notification.permission === "granted") { 
+if ("Notification" in window && Notification.permission === "granted") { 
+  localStorage.setItem("notifications", "true");
   setupDailyCheck(); 
 }
 
@@ -102,8 +116,6 @@ function openModal(type) {
   $("#eventForm").reset(); 
   $("#date").value = todayISO(); 
   $("#category").value = type === "turno" ? "work" : type === "tarea" ? "study" : type === "recordatorio" ? "reminder" : "personal"; 
-  $("#eventFields").style.display = "block"; 
-  $("#profileFields").style.display = "none"; 
   $("#modalBackdrop").classList.add("open"); 
 }
 
@@ -117,11 +129,16 @@ $("#eventForm").addEventListener("submit", e => {
   const newEvent = { id: Date.now(), title: $("#title").value, date: $("#date").value, start: $("#start").value, end: $("#end").value, category: $("#category").value, notes: $("#notes").value, done: false };
   events.push(newEvent);
   save();
-  if (newEvent.category === "reminder" && newEvent.date === todayISO()) {
-    showNotification("Recordatorio añadido", `${newEvent.title}${newEvent.start ? " para las " + newEvent.start : ""}`);
-  }
   $("#modalBackdrop").classList.remove("open");
   renderAll();
+  if (newEvent.category === "reminder") {
+    // Ask for notification permission the first time a reminder is created, so alerts actually work without needing to open "Mi perfil" first.
+    if ("Notification" in window && Notification.permission === "default") {
+      requestNotificationPermission();
+    } else {
+      checkDailyReminders();
+    }
+  }
   showNotification("Evento guardado", `${newEvent.title} ha sido añadido correctamente`);
 });
 

@@ -55,16 +55,19 @@ $("#modalBackdrop").addEventListener("click", e => { if (e.target.id === "modalB
 $("#closeProfileModal").addEventListener("click", () => $("#profileModalBackdrop").style.display = "none");
 $("#profileModalBackdrop").addEventListener("click", e => { if (e.target.id === "profileModalBackdrop") $("#profileModalBackdrop").style.display = "none" });
 
-$("#eventForm").addEventListener("submit", e => { 
-  e.preventDefault(); 
-  const newEvent = { id: Date.now(), title: $("#title").value, date: $("#date").value, start: $("#start").value, end: $("#end").value, category: $("#category").value, notes: $("#notes").value, done: false }; 
-  events.push(newEvent); 
-  save(); 
-  if (newEvent.category === "reminder" && newEvent.date === todayISO()) { 
-    showNotification("Recordatorio añadido", `${newEvent.title}${newEvent.start ? " para las " + newEvent.start : ""}`); 
-  } 
-  $("#modalBackdrop").classList.remove("open"); 
-  renderAll(); 
+$("#eventForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const newEvent = { id: Date.now(), title: $("#title").value, date: $("#date").value, start: $("#start").value, end: $("#end").value, category: $("#category").value, notes: $("#notes").value, done: false };
+  events.push(newEvent);
+  save();
+  console.log("Evento guardado:", newEvent);
+  console.log("Total eventos:", events.length);
+  if (newEvent.category === "reminder" && newEvent.date === todayISO()) {
+    showNotification("Recordatorio añadido", `${newEvent.title}${newEvent.start ? " para las " + newEvent.start : ""}`);
+  }
+  $("#modalBackdrop").classList.remove("open");
+  renderAll();
+  showNotification("Evento guardado", `${newEvent.title} ha sido añadido correctamente`);
 });
 
 const profileForm = $("#profileForm");

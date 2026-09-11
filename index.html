@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Planificador ✿</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#c88f9e">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <button class="close-sidebar" id="closeSidebar"><i class="fas fa-times"></i></button>
+      <div class="brand">
+        <div class="brand-mark">✿</div>
+        <div><strong>my planner</strong><span>tu espacio bonito</span></div>
+      </div>
+      <nav>
+        <button class="nav-item active" data-view="inicio"><i class="fas fa-home"></i> <span>Inicio</span></button>
+        <button class="nav-item" data-view="calendario"><i class="fas fa-calendar-alt"></i> <span>Calendario</span></button>
+        <button class="nav-item" data-view="turnos"><i class="fas fa-briefcase-medical"></i> <span>Mis turnos</span></button>
+        <button class="nav-item" data-view="tareas"><i class="fas fa-book-medical"></i> <span>Tareas y exámenes</span></button>
+        <button class="nav-item" data-view="recordatorios"><i class="fas fa-bell"></i> <span>Recordatorios</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-item" id="themeToggle"><i class="fas fa-moon"></i> <span>Modo oscuro</span></button>
+        <button class="nav-item" data-open="perfil"><i class="fas fa-user-cog"></i> <span>Mi perfil</span></button>
+        <p>hecho para organizar<br>tus días con calma ✨</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu">☰</button>
+        <div class="date-label" id="todayLabel"></div>
+        <button class="profile" data-open="perfil"><i class="fas fa-user-nurse"></i> <span id="profileName">Usuario</span> ✿</button>
+      </header>
+
+      <section id="inicio" class="view active-view">
+        <div class="hero">
+          <div>
+            <p class="eyebrow">TU ESPACIO PERSONAL ✿</p>
+            <h1>Hola, <span id="heroName">Usuario</span> <span>♡</span></h1>
+            <p class="hero-text">Organiza tus días, tus turnos y tus sueños.</p>
+          </div>
+          <div class="hero-flower">✿</div>
+        </div>
+        <div class="quick-actions">
+          <button class="primary-btn" data-open="evento">＋ Añadir evento</button>
+          <button class="soft-btn" data-view="calendario">Ver calendario →</button>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-card"><span class="stat-icon pink"><i class="fas fa-briefcase-medical"></i></span><p>Turnos próximos</p><strong id="statShifts">0</strong><small>turnos guardados</small></div>
+          <div class="stat-card"><span class="stat-icon blue"><i class="fas fa-book-medical"></i></span><p>Tareas pendientes</p><strong id="statTasks">0</strong><small>por completar</small></div>
+          <div class="stat-card"><span class="stat-icon green"><i class="fas fa-bell"></i></span><p>Recordatorios</p><strong id="statReminders">0</strong><small>en tu agenda</small></div>
+        </div>
+        <div class="section-heading"><div><p class="eyebrow">TU AGENDA</p><h2>Próximos eventos</h2></div><button class="text-btn" data-view="calendario">Ver todos →</button></div>
+        <div id="upcoming" class="event-list"></div>
+      </section>
+
+      <section id="calendario" class="view">
+        <div class="section-heading"><div><p class="eyebrow">ORGANIZA TU MES</p><h1>Calendario</h1></div><button class="primary-btn" data-open="evento">＋ Añadir</button></div>
+        <div class="calendar-toolbar"><button id="prevMonth">←</button><h2 id="monthTitle"></h2><button id="nextMonth">→</button><button class="soft-btn" id="todayBtn">Hoy</button></div>
+        <div class="calendar-card"><div class="weekdays" id="weekdays"></div><div class="calendar-grid" id="calendarGrid"></div></div>
+        <div class="legend"><span><i class="dot work"></i> <i class="fas fa-briefcase-medical"></i> Trabajo</span><span><i class="dot study"></i> <i class="fas fa-book-medical"></i> Estudios</span><span><i class="dot personal"></i> <i class="fas fa-heart"></i> Personal</span><span><i class="dot reminder"></i> <i class="fas fa-bell"></i> Recordatorio</span></div>
+      </section>
+
+      <section id="turnos" class="view">
+        <div class="section-heading"><div><p class="eyebrow">TU HORARIO</p><h1>Mis turnos</h1></div><button class="primary-btn" data-open="turno">＋ Nuevo turno</button></div>
+        <div class="info-banner">✿ Aquí puedes guardar tus horas de trabajo y consultar tus próximos turnos.</div>
+        <div id="shiftList" class="cards-list"></div>
+      </section>
+
+      <section id="tareas" class="view">
+        <div class="section-heading"><div><p class="eyebrow">TODO BAJO CONTROL</p><h1>Tareas y exámenes</h1></div><button class="primary-btn" data-open="tarea">＋ Nueva tarea</button></div>
+        <div id="taskList" class="cards-list"></div>
+      </section>
+
+      <section id="recordatorios" class="view">
+        <div class="section-heading"><div><p class="eyebrow">NO TE OLVIDES DE NADA</p><h1>Recordatorios</h1></div><button class="primary-btn" data-open="recordatorio">＋ Nuevo</button></div>
+        <div id="reminderList" class="cards-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal">
+      <button class="close-modal" id="closeModal">×</button>
+      <p class="eyebrow" id="modalEyebrow">NUEVO EVENTO</p>
+      <h2 id="modalTitle">Añadir evento</h2>
+      <form id="eventForm">
+        <input type="hidden" id="eventType">
+        <div id="eventFields">
+          <label>Título <input id="title" required placeholder="Ej. Turno de trabajo"></label>
+          <label>Fecha <input id="date" type="date" required></label>
+          <div class="two-cols">
+            <label>Hora de inicio <input id="start" type="time"></label>
+            <label>Hora de fin <input id="end" type="time"></label>
+          </div>
+          <label>Categoría
+            <select id="category"><option value="work">Trabajo</option><option value="study">Estudios</option><option value="personal">Personal</option><option value="reminder">Recordatorio</option></select>
+          </label>
+          <label>Notas <textarea id="notes" placeholder="Añade algún detalle..."></textarea></label>
+        </div>
+        <div id="profileFields" style="display:none">
+          <label>Nombre <input id="profileNameInput" required placeholder="Tu nombre"></label>
+          <label>Categoría profesional
+            <select id="profileRoleInput">
+              <option value="medico">Médico</option>
+              <option value="enfermera">Enfermera</option>
+              <option value="auxiliar">Auxiliar de Enfermería</option>
+              <option value="celador">Celador</option>
+              <option value="fisioterapeuta">Fisioterapeuta</option>
+            </select>
+          </label>
+          <div style="background:var(--soft);padding:12px;border-radius:8px;margin-top:15px;font-size:13px;color:var(--accent-dark)">
+            <i class="fas fa-info-circle"></i> Al guardar tu perfil, se activarán las notificaciones para tus recordatorios
+          </div>
+        </div>
+        <button class="primary-btn full" type="submit">Guardar ✿</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="profileModalBackdrop" style="display:none">
+    <div class="modal">
+      <button class="close-modal" id="closeProfileModal">×</button>
+      <p class="eyebrow">TU PERFIL</p>
+      <h2>Configurar perfil</h2>
+      <form id="profileForm">
+        <label>Nombre <input id="profileNameConfig" required placeholder="Tu nombre"></label>
+        <label>Categoría profesional
+          <select id="profileRoleConfig">
+            <option value="medico">Médico</option>
+            <option value="enfermera">Enfermera</option>
+            <option value="auxiliar">Auxiliar de Enfermería</option>
+            <option value="celador">Celador</option>
+            <option value="fisioterapeuta">Fisioterapeuta</option>
+          </select>
+        </label>
+        <div style="background:var(--soft);padding:12px;border-radius:8px;margin-top:15px;font-size:13px;color:var(--accent-dark)">
+          <i class="fas fa-info-circle"></i> Al guardar tu perfil, se activarán las notificaciones para tus recordatorios
+        </div>
+        <button class="primary-btn full" type="submit" id="saveProfileBtn">Guardar ✿</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

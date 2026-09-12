@@ -4,7 +4,73 @@ let events = JSON.parse(localStorage.getItem("plannerEvents") || "[]");
 let current = new Date(); let activeView = "inicio";
 let userProfile = JSON.parse(localStorage.getItem("plannerProfile") || '{"name":"Usuario","role":"enfermera"}');
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const save = () => localStorage.setItem("plannerEvents", JSON.stringify(events));
+
+// --- Notificaciones push "fuera de la app" (funcionan con el navegador cerrado) ---
+const VAPID_PUBLIC_KEY = "BMjXFIsQxVaYjj6AC7yD-JbCzYetzEA6EfH9jaqnydUeRdjpLz-BsvX9omh2lxlqBexgKTDY8b26qiU4uZ0q8zQ";
+
+function getClientId() {
+  let id = localStorage.getItem("plannerClientId");
+  if (!id) {
+    id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ("c-" + Date.now() + "-" + Math.random().toString(36).slice(2));
+    localStorage.setItem("plannerClientId", id);
+  }
+  return id;
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map(c => c.charCodeAt(0)));
+}
+
+function computeNotifyAtISO(e) {
+  if (!e.start) return null; // sin hora no podemos calcular un instante exacto
+  const target = new Date(`${e.date}T${e.start}:00`); // se interpreta en la hora local del dispositivo
+  target.setSeconds(target.getSeconds() - (e.leadSeconds || 0));
+  return target.toISOString();
+}
+
+async function syncRemindersToServer() {
+  try {
+    const reminders = events
+      .filter(e => e.category === "reminder")
+      .map(e => ({ id: e.id, title: e.title, start: e.start, notifyAt: computeNotifyAtISO(e) }))
+      .filter(r => r.notifyAt);
+    await fetch("/api/reminders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: getClientId(), reminders })
+    });
+  } catch (e) {
+    // El backend puede no estar disponible (p. ej. probando en local); los avisos dentro de la app siguen funcionando igualmente.
+  }
+}
+
+async function subscribeToPush() {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
+    }
+    await fetch("/api/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: getClientId(), subscription: sub })
+    });
+    syncRemindersToServer();
+  } catch (e) {
+    console.warn("No se pudo activar el aviso fuera de la app:", e);
+  }
+}
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(err => console.warn("No se pudo registrar el service worker:", err));
+}
+
+const save = () => { localStorage.setItem("plannerEvents", JSON.stringify(events)); syncRemindersToServer(); };
 const saveProfile = () => localStorage.setItem("plannerProfile", JSON.stringify(userProfile));
 const fmtDate = d => new Date(d + "T12:00:00").toLocaleDateString("es-ES", { day: "numeric", month: "long" });
 const typeName = t => ({ work: "Trabajo", study: "Estudios", personal: "Personal", reminder: "Recordatorio" }[t] || t);
@@ -36,6 +102,7 @@ function requestNotificationPermission() {
   if (Notification.permission === "granted") { 
     localStorage.setItem("notifications", "true"); 
     setupDailyCheck(); 
+    subscribeToPush();
     return; 
   } 
   if (Notification.permission === "denied") return;
@@ -43,8 +110,9 @@ function requestNotificationPermission() {
     if (permission === "granted") { 
       localStorage.setItem("notifications", "true"); 
       localStorage.setItem("notificationPermission", "granted"); 
-      showNotification("¡Notificaciones activadas!", "Ahora recibirás avisos de tus recordatorios"); 
+      showNotification("¡Notificaciones activadas!", "Ahora recibirás avisos de tus recordatorios, incluso con la app cerrada"); 
       setupDailyCheck(); 
+      subscribeToPush();
     } else { 
       localStorage.setItem("notificationPermission", "denied"); 
     } 
@@ -60,31 +128,42 @@ function showNotification(title, body) {
 
 const getNotifiedSet = () => new Set(JSON.parse(localStorage.getItem("notifiedReminders") || "[]"));
 const markNotified = key => { const s = getNotifiedSet(); s.add(key); localStorage.setItem("notifiedReminders", JSON.stringify([...s])); };
-const nowHM = () => { const d = new Date(); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); };
 
-function checkDailyReminders() {
-  const today = todayISO();
+function reminderNotifyTime(r) {
+  if (!r.start) return null; // no exact time to schedule against
+  const base = new Date(`${r.date}T${r.start}:00`);
+  base.setSeconds(base.getSeconds() - (r.leadSeconds || 0));
+  return base;
+}
+
+function checkReminders() {
+  const now = new Date();
   const notified = getNotifiedSet();
-  const currentHM = nowHM();
-  events.filter(e => e.category === "reminder" && e.date === today).forEach(r => {
-    const key = `${r.id}:${today}`;
+  events.filter(e => e.category === "reminder").forEach(r => {
+    const key = `${r.id}`;
     if (notified.has(key)) return;
-    if (r.start) {
-      // Notify once the scheduled time has arrived (checked periodically, so allow the current minute onward).
-      if (currentHM >= r.start) { showNotification("Recordatorio", `${r.title} · ${r.start}`); markNotified(key); }
-    } else {
-      // No specific time: notify once the first time we check it today.
-      showNotification("Recordatorio", r.title); markNotified(key);
+    const notifyAt = reminderNotifyTime(r);
+    if (notifyAt) {
+      if (now >= notifyAt) {
+        const lead = r.leadSeconds || 0;
+        const leadText = lead > 0 ? ` (en ${lead >= 3600 ? Math.round(lead / 3600) + "h" : lead >= 60 ? Math.round(lead / 60) + "min" : lead + "s"})` : "";
+        showNotification("Recordatorio", `${r.title} · ${r.start}${leadText}`);
+        markNotified(key);
+      }
+    } else if (r.date === todayISO()) {
+      // No specific time: notify once, the first time we check it today.
+      showNotification("Recordatorio", r.title);
+      markNotified(key);
     }
   });
 }
 
-let dailyCheckInterval = null;
+let reminderCheckInterval = null;
 function setupDailyCheck() {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
-  checkDailyReminders();
-  if (dailyCheckInterval) return; // avoid stacking multiple intervals
-  dailyCheckInterval = setInterval(checkDailyReminders, 30000);
+  checkReminders();
+  if (reminderCheckInterval) return; // avoid stacking multiple intervals
+  reminderCheckInterval = setInterval(checkReminders, 1000); // every second, for exact-timing notifications
 }
 
 $$("[data-view]").forEach(b => b.addEventListener("click", () => { showView(b.dataset.view); if (window.innerWidth <= 768) { $(".sidebar").classList.remove("open"); } }));
@@ -99,7 +178,13 @@ initializeProfile();
 if ("Notification" in window && Notification.permission === "granted") { 
   localStorage.setItem("notifications", "true");
   setupDailyCheck(); 
+  subscribeToPush();
 }
+
+const leadToSeconds = (amount, unit) => { const n = Number(amount) || 0; return unit === "horas" ? n * 3600 : unit === "minutos" ? n * 60 : n; };
+
+function toggleLeadTimeGroup() { $("#leadTimeGroup").style.display = $("#category").value === "reminder" ? "block" : "none"; }
+$("#category").addEventListener("change", toggleLeadTimeGroup);
 
 $$("[data-open]").forEach(b => b.addEventListener("click", () => openModal(b.dataset.open)));
 
@@ -116,6 +201,9 @@ function openModal(type) {
   $("#eventForm").reset(); 
   $("#date").value = todayISO(); 
   $("#category").value = type === "turno" ? "work" : type === "tarea" ? "study" : type === "recordatorio" ? "reminder" : "personal"; 
+  $("#leadAmount").value = 0; 
+  $("#leadUnit").value = "minutos"; 
+  toggleLeadTimeGroup(); 
   $("#modalBackdrop").classList.add("open"); 
 }
 
@@ -126,7 +214,14 @@ $("#profileModalBackdrop").addEventListener("click", e => { if (e.target.id === 
 
 $("#eventForm").addEventListener("submit", e => {
   e.preventDefault();
-  const newEvent = { id: Date.now(), title: $("#title").value, date: $("#date").value, start: $("#start").value, end: $("#end").value, category: $("#category").value, notes: $("#notes").value, done: false };
+  const category = $("#category").value;
+  const leadAmount = Number($("#leadAmount").value) || 0;
+  const leadUnit = $("#leadUnit").value;
+  if (category === "reminder" && leadAmount > 0 && !$("#start").value) {
+    alert("Para poner un aviso previo, indica primero una hora de inicio.");
+    return;
+  }
+  const newEvent = { id: Date.now(), title: $("#title").value, date: $("#date").value, start: $("#start").value, end: $("#end").value, category, notes: $("#notes").value, done: false, leadSeconds: category === "reminder" ? leadToSeconds(leadAmount, leadUnit) : 0 };
   events.push(newEvent);
   save();
   $("#modalBackdrop").classList.remove("open");
@@ -136,7 +231,7 @@ $("#eventForm").addEventListener("submit", e => {
     if ("Notification" in window && Notification.permission === "default") {
       requestNotificationPermission();
     } else {
-      checkDailyReminders();
+      checkReminders();
     }
   }
   showNotification("Evento guardado", `${newEvent.title} ha sido añadido correctamente`);

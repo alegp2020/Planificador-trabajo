@@ -102,6 +102,19 @@
             <label>Hora de inicio <input id="start" type="time"></label>
             <label>Hora de fin <input id="end" type="time"></label>
           </div>
+          <div id="leadTimeGroup" style="display:none">
+            <label>Avisarme con antelación de
+              <div class="two-cols">
+                <input id="leadAmount" type="number" min="0" value="0" step="1">
+                <select id="leadUnit">
+                  <option value="segundos">Segundos</option>
+                  <option value="minutos" selected>Minutos</option>
+                  <option value="horas">Horas</option>
+                </select>
+              </div>
+            </label>
+            <small style="color:var(--muted);font-size:11px">Deja "0" para recibir el aviso justo a la hora de inicio. Necesitas indicar una hora de inicio para poder poner antelación.</small>
+          </div>
           <label>Categoría
             <select id="category"><option value="work">Trabajo</option><option value="study">Estudios</option><option value="personal">Personal</option><option value="reminder">Recordatorio</option></select>
           </label>

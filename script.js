@@ -17,6 +17,27 @@ function getClientId() {
   return id;
 }
 
+function setPushStatus(html) {
+  document.querySelectorAll(".push-status").forEach(el => { el.innerHTML = html; });
+}
+
+function renderInitialPushStatus() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+    setPushStatus("⚠️ Este navegador no soporta avisos fuera de la app.");
+    return;
+  }
+  if (Notification.permission === "denied") {
+    setPushStatus("🚫 Bloqueaste los avisos para esta app. Actívalos en los ajustes de notificaciones del navegador y recarga la página.");
+    return;
+  }
+  if (Notification.permission === "granted") {
+    setPushStatus("Comprobando la conexión con el servidor…");
+    subscribeToPush();
+    return;
+  }
+  setPushStatus("Pulsa el botón para activar los avisos fuera de la app.");
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -43,25 +64,42 @@ async function syncRemindersToServer() {
       body: JSON.stringify({ clientId: getClientId(), reminders })
     });
   } catch (e) {
-    // El backend puede no estar disponible (p. ej. probando en local); los avisos dentro de la app siguen funcionando igualmente.
+    console.warn("No se pudieron sincronizar los recordatorios con el servidor:", e);
   }
 }
 
 async function subscribeToPush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    setPushStatus("⚠️ Este navegador no soporta avisos fuera de la app.");
+    return;
+  }
   try {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
       sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) });
     }
-    await fetch("/api/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId: getClientId(), subscription: sub })
-    });
+    let resp;
+    try {
+      resp = await fetch("/api/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId: getClientId(), subscription: sub })
+      });
+    } catch (netErr) {
+      setPushStatus("⚠️ No se pudo contactar con el servidor (/api/subscribe). ¿Está bien desplegada la app en Vercel?");
+      return;
+    }
+    if (!resp.ok) {
+      let detail = "";
+      try { const j = await resp.json(); detail = j && j.error ? j.error : ""; } catch (e2) {}
+      setPushStatus(`⚠️ El servidor rechazó la suscripción (código ${resp.status}). ${escapeHtml(detail)}<br><small>Revisa que hayas conectado la base de datos Upstash y las variables de entorno en Vercel.</small>`);
+      return;
+    }
+    setPushStatus("✅ Avisos fuera de la app activados correctamente.");
     syncRemindersToServer();
   } catch (e) {
+    setPushStatus(`⚠️ No se pudo activar: ${escapeHtml(String((e && e.message) || e))}`);
     console.warn("No se pudo activar el aviso fuera de la app:", e);
   }
 }
@@ -186,13 +224,83 @@ const leadToSeconds = (amount, unit) => { const n = Number(amount) || 0; return 
 function toggleLeadTimeGroup() { $("#leadTimeGroup").style.display = $("#category").value === "reminder" ? "block" : "none"; }
 $("#category").addEventListener("change", toggleLeadTimeGroup);
 
+async function updateNotifStatus() {
+  const el = $("#notifStatus");
+  if (!el) return;
+  const lines = [];
+  lines.push(`Permiso del navegador: <b>${("Notification" in window) ? Notification.permission : "no soportado"}</b>`);
+  lines.push(`Service worker: <b>${("serviceWorker" in navigator) ? ((await navigator.serviceWorker.getRegistration()) ? "registrado" : "no registrado todavía") : "no soportado"}</b>`);
+  let subInfo = "no hay suscripción activa";
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) subInfo = "activa (" + new URL(sub.endpoint).hostname + ")";
+      }
+    }
+  } catch (e) { subInfo = "error comprobando: " + e.message; }
+  lines.push(`Suscripción push: <b>${subInfo}</b>`);
+  const remindersCount = events.filter(e => e.category === "reminder").length;
+  lines.push(`Recordatorios guardados: <b>${remindersCount}</b>`);
+  el.innerHTML = lines.join("<br>");
+}
+
+$("#testPushBtn")?.addEventListener("click", async () => {
+  const btn = $("#testPushBtn");
+  btn.textContent = "Enviando...";
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") {
+      alert("Primero tienes que conceder el permiso de notificaciones. Guarda tu perfil o crea un recordatorio para que te lo pida.");
+      return;
+    }
+    // Asegura que la suscripción esté sincronizada con el servidor antes de probar.
+    await subscribeToPush();
+    const res = await fetch("/api/test-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId: getClientId() })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      alert("Notificación de prueba enviada. Cierra por completo la app/navegador ahora y espera unos segundos a que llegue.");
+    } else {
+      alert("Fallo al enviar la notificación de prueba:\n\n" + (data.error || `Error HTTP ${res.status}`));
+    }
+  } catch (e) {
+    alert("No se pudo contactar con el servidor (¿está bien desplegado en Vercel?):\n\n" + e.message);
+  } finally {
+    btn.textContent = "Enviar notificación de prueba (fuera de la app)";
+    updateNotifStatus();
+  }
+});
+
 $$("[data-open]").forEach(b => b.addEventListener("click", () => openModal(b.dataset.open)));
+$("#enablePushBtn")?.addEventListener("click", () => {
+  if ("Notification" in window && Notification.permission === "granted") { subscribeToPush(); }
+  else { requestNotificationPermission(); }
+});
+$("#testPushBtn")?.addEventListener("click", async () => {
+  setPushStatus("Enviando notificación de prueba…");
+  try {
+    const resp = await fetch("/api/test-push", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clientId: getClientId() }) });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      setPushStatus("✅ Prueba enviada. Cierra la app del todo y espera unos segundos — debería llegarte la notificación igual que en WhatsApp.");
+    } else {
+      setPushStatus(`⚠️ Error al enviar la prueba (código ${resp.status}): ${escapeHtml(data.error || "")}`);
+    }
+  } catch (e) {
+    setPushStatus(`⚠️ No se pudo contactar con el servidor: ${escapeHtml(String((e && e.message) || e))}`);
+  }
+});
 
 function openModal(type) {
   if (type === "perfil") {
     $("#profileNameConfig").value = userProfile.name; 
     $("#profileRoleConfig").value = userProfile.role; 
     $("#profileModalBackdrop").style.display = "block"; 
+    updateNotifStatus();
     return; 
   } 
   $("#eventType").value = type; 
@@ -319,3 +427,4 @@ $("#todayBtn").addEventListener("click", () => { current = new Date(); renderCal
 function renderAll() { renderHome(); renderLists(); renderCalendar(); }
 $("#todayLabel").textContent = new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" });
 renderAll();
+renderInitialPushStatus();

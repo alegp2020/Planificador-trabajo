@@ -83,6 +83,13 @@
 
       <section id="recordatorios" class="view">
         <div class="section-heading"><div><p class="eyebrow">NO TE OLVIDES DE NADA</p><h1>Recordatorios</h1></div><button class="primary-btn" data-open="recordatorio">＋ Nuevo</button></div>
+        <div class="info-banner" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <span id="pushStatusText" class="push-status">Comprobando el estado de las notificaciones…</span>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="soft-btn" id="enablePushBtn">🔔 Activar avisos fuera de la app</button>
+            <button class="soft-btn" id="testPushBtn">🧪 Enviar prueba</button>
+          </div>
+        </div>
         <div id="reminderList" class="cards-list"></div>
       </section>
     </main>
@@ -146,6 +153,11 @@
         </div>
         <button class="primary-btn full" type="submit" id="saveProfileBtn">Guardar ✿</button>
       </form>
+      <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--line)">
+        <p class="eyebrow">DIAGNÓSTICO</p>
+        <p id="notifStatus" style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:10px"></p>
+        <button type="button" class="soft-btn full" id="testPushBtn">Enviar notificación de prueba (fuera de la app)</button>
+      </div>
     </div>
   </div>
 
